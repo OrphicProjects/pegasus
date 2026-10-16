@@ -1,0 +1,13 @@
+{
+  "name": "pegasus-worker",
+  "private": true,
+  "type": "module",
+  "description": "Pegasus — le registre des sites, les rapports quotidiens et la bibliothèque, sur Cloudflare (Worker + D1).",
+  "scripts": {
+    "deploy": "wrangler deploy",
+    "schema": "wrangler d1 execute pegasus --remote --file=schema.sql"
+  },
+  "devDependencies": {
+    "wrangler": "4.131.2"
+  }
+}

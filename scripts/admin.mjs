@@ -1,31 +1,23 @@
 #!/usr/bin/env node
 /**
  * PEGASUS — Console admin (réservée à Sacha, sur le Mac qui détient les secrets).
- * Gère la livraison de la clé d'équipe aux collègues via Supabase.
+ * Gère la livraison de la clé d'équipe aux collègues via le service Pegasus (Worker Cloudflare).
  *
- * Prérequis : mcp-server/pegasus.config.json (URL + service key) et,
- * pour `set-key`, mcp-server/pegasus.config.json + pegasus-private.pem.
+ * Prérequis : ~/.config/orphic/pegasus.local.json (adresse + jeton de service) et la clé
+ * privée de déchiffrement (voir scripts/_acces.mjs).
  *
  * Usage :
- *   node scripts/admin.mjs set-key            # (re)dépose la clé d'équipe dans Supabase
+ *   node scripts/admin.mjs set-key            # (re)dépose la clé d'équipe dans le service
  *   node scripts/admin.mjs add "Prénom Nom"   # crée un code d'accès pour un collègue
  *   node scripts/admin.mjs list               # liste les codes (statut, dernière utilisation)
  *   node scripts/admin.mjs revoke "Prénom Nom"# révoque le(s) code(s) d'un collègue
  */
-import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
-import { dirname, join } from "node:path";
 import { createHash, randomBytes } from "node:crypto";
+import { acces, cleEquipe } from "./_acces.mjs";
 
-const dir = dirname(fileURLToPath(import.meta.url));
-const src = join(dir, "..", "mcp-server");
-
-const cfg = JSON.parse(readFileSync(join(src, "pegasus.config.json"), "utf8"));
-const URL = cfg.supabase_url.replace(/\/$/, "");
-const SERVICE = cfg.supabase_service_key;
+const { url: URL, token: SERVICE } = acces();
 
 const H = {
-  apikey: SERVICE,
   Authorization: `Bearer ${SERVICE}`,
   "Content-Type": "application/json",
   Prefer: "return=representation",
@@ -34,23 +26,13 @@ const H = {
 const sha256 = (s) => createHash("sha256").update(s).digest("hex");
 
 async function rest(path, opts = {}) {
-  const res = await fetch(`${URL}/rest/v1/${path}`, { ...opts, headers: { ...H, ...(opts.headers || {}) } });
+  const res = await fetch(`${URL}/v1/${path}`, { ...opts, headers: { ...H, ...(opts.headers || {}) } });
   const text = await res.text();
   if (!res.ok) throw new Error(`${res.status} ${res.statusText} — ${text}`);
   return text ? JSON.parse(text) : null;
 }
 
-function buildTeamKey() {
-  const c = JSON.parse(readFileSync(join(src, "pegasus.config.json"), "utf8"));
-  const priv = readFileSync(join(src, "pegasus-private.pem"), "utf8");
-  const bundle = {
-    supabase_url: c.supabase_url,
-    supabase_service_key: c.supabase_service_key,
-    supabase_anon_key: c.supabase_anon_key,
-    private_key: priv,
-  };
-  return Buffer.from(JSON.stringify(bundle)).toString("base64");
-}
+const buildTeamKey = cleEquipe;
 
 // Code lisible : 4 groupes de 4 (ex : 7Q2K-9FMP-3XR8-VD5T)
 function genCode() {
@@ -76,7 +58,7 @@ try {
       headers: { Prefer: "resolution=merge-duplicates,return=representation" },
       body: JSON.stringify({ id: 1, team_key, updated_at: new Date().toISOString() }),
     });
-    console.log(`\n✅ Clé d'équipe déposée dans Supabase (${team_key.length} caractères).`);
+    console.log(`\n✅ Clé d'équipe déposée dans le service Pegasus (${team_key.length} caractères).`);
     console.log("   Les collègues avec un code valide peuvent maintenant s'installer.\n");
   } else if (cmd === "add") {
     if (!arg) throw new Error('Précise un libellé : node scripts/admin.mjs add "Prénom Nom"');
@@ -110,7 +92,7 @@ try {
     console.log(`
 PEGASUS — Console admin
 
-  node scripts/admin.mjs set-key             (re)dépose la clé d'équipe dans Supabase
+  node scripts/admin.mjs set-key             (re)dépose la clé d'équipe dans le service Pegasus
   node scripts/admin.mjs add "Prénom Nom"    crée un code d'accès pour un collègue
   node scripts/admin.mjs list                liste les codes (statut, dernière utilisation)
   node scripts/admin.mjs revoke "Prénom Nom" révoque le(s) code(s) d'un collègue

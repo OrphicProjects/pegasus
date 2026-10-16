@@ -1,10 +1,10 @@
 # ————— SECRETS : ne JAMAIS committer —————
-# Clé privée de déchiffrement, clé service Supabase, mots de passe en clair, clé d'équipe
+# Clé privée de déchiffrement, jeton de service Pegasus, mots de passe en clair, clé d'équipe
 **/pegasus-private.pem
 **/pegasus.config.json
 **/clients.json
 # Fichier-secret local nommé exactement « team-key » (ex : copie de ~/.pegasus/team-key).
-# NB : pattern resserré pour ne PAS attraper make-team-key.mjs ni supabase/team-key-delivery.sql (non-secrets).
+# NB : pattern resserré pour ne PAS attraper make-team-key.mjs (non-secret).
 **/team-key
 **/team_key
 .env

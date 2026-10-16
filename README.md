@@ -34,7 +34,7 @@ Guide pas à pas : installer le zip du plugin WordPress (fourni avec Pegasus) su
 
 ## 🔑 Pour l'admin (Sacha) — la clé d'équipe
 
-La clé d'équipe donne accès au registre Supabase des sites + à la clé de déchiffrement des mots de passe. Générez-la sur votre Mac (celui qui détient les secrets) :
+La clé d'équipe donne accès au registre Pegasus des sites (le Worker Cloudflare, jeton de service) + à la clé de déchiffrement des mots de passe. Générez-la sur votre Mac (celui qui détient les secrets) :
 
 ```
 node scripts/make-team-key.mjs
@@ -48,7 +48,7 @@ Partagez le blob affiché **via 1Password** (jamais dans un dépôt, un chat, ou
 
 - **Aucun secret dans ce dépôt** (voir `.gitignore`). Les secrets vivent dans la clé d'équipe (côté dev) et sur le Mac de l'admin.
 - Auth par **Application Passwords WordPress natives** ; chaque route du plugin vérifie une capacité WP. **Pas d'écriture de fichiers PHP à distance.**
-- Mots de passe des sites **chiffrés RSA-2048** dans Supabase (registre append-only, lecture réservée à la clé service). Clé publique embarquée dans le plugin WP ; clé privée uniquement dans la clé d'équipe.
+- Mots de passe des sites **chiffrés RSA-2048** dans le registre Pegasus (D1, ajout seul avec le jeton public, lecture réservée au jeton de service). Clé publique embarquée dans le plugin WP ; clé privée uniquement dans la clé d'équipe.
 
 ## 🧱 Architecture
 
@@ -65,9 +65,9 @@ OrphicDev/pegasus (ce dépôt = marketplace)
     └── wordpress-plugin/pegasus.zip    ← plugin WP à installer sur les sites clients
 ```
 
-- **Serveur MCP** (`server.mjs`) : lit le registre Supabase avec la clé service, déchiffre les mots de passe avec la clé privée (toutes deux dans la clé d'équipe), et signe les appels à l'API Pegasus de chaque site. Claude ne voit jamais les mots de passe.
+- **Serveur MCP** (`server.mjs`) : lit le registre Pegasus avec le jeton de service, déchiffre les mots de passe avec la clé privée (toutes deux dans la clé d'équipe), et signe les appels à l'API Pegasus de chaque site. Claude ne voit jamais les mots de passe.
 - **Plugin WordPress** (`wordpress-plugin/`) : expose l'API REST `pegasus/v1` sur le site du client + un back-office (statut, bouton de connexion). Installé une fois par site.
-- **Supabase** : registre central des sites (table `sites`, chiffrée).
+- **Service Pegasus** (`worker/`) : un Worker Cloudflare et sa base D1 `pegasus` — registre central des sites (table `sites`, chiffrée), rapports quotidiens, bibliothèque, sauvegardes, livraison de la clé d'équipe. Adresse : `https://pegasus.athena-mail-cloudflare.workers.dev`. Deux jetons, posés comme secrets du Worker : le **jeton public** (dans le plugin WordPress et l'app de bureau — il ne peut qu'ajouter un site ou un rapport, et échanger un code d'accès contre la clé) et le **jeton de service** (dans la clé d'équipe — tout). Sans jeton : rien. Déploiement : `cd worker && npm install && CLOUDFLARE_API_TOKEN=… npx wrangler deploy` ; schéma : `worker/schema.sql`.
 
 ## 🛠️ Outils disponibles
 
@@ -103,7 +103,7 @@ L'agent optimise sous contrainte ; il ne crée jamais de design en autonomie
 Le skill (fichiers, versionné git, distribué par la marketplace) porte la
 **méthode** — elle bouge rarement. Les **données** — références de sites,
 animations validées, fiches secteurs, issues de la veille quotidienne des
-devs — vivent dans **Supabase** via 3 outils MCP :
+devs — vivent dans le **service Pegasus** (D1) via 3 outils MCP :
 
 - `pegasus_get_references` — chercher (kind, niveau, registre, business,
   intention, texte libre ; validées par défaut)
@@ -112,9 +112,7 @@ devs — vivent dans **Supabase** via 3 outils MCP :
 
 Flux : **proposer (candidat) → valider (humain) → vivant pour toute l'agence.**
 
-> **Installation (une fois, admin)** : coller `supabase/references-library.sql`
-> dans Supabase → SQL Editor (projet Pegasus). Tant que la table n'existe pas,
-> les 3 outils renvoient une erreur explicite ; le skill retombe sur ses .md.
+> La table `references_library` vit dans la base D1 `pegasus` (schéma : `worker/schema.sql`).
 
 ### Feuille de route skills & agents
 

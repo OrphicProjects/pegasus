@@ -5,8 +5,8 @@ const { join } = require("node:path");
 const { homedir } = require("node:os");
 
 const CFG = JSON.parse(readFileSync(join(__dirname, "app-config.json"), "utf8"));
-const SUPABASE_URL = CFG.supabase_url.replace(/\/$/, "");
-const ANON = CFG.supabase_anon_key;
+const API_URL = CFG.api_url.replace(/\/$/, "");   // le service Pegasus (Worker Cloudflare)
+const API_KEY = CFG.api_key;                          // jeton public : il n'échange qu'un code contre la clé
 const KEY_DIR = join(homedir(), ".pegasus");
 const KEY_FILE = join(KEY_DIR, "team-key");
 
@@ -43,11 +43,10 @@ ipcMain.handle("connect", async (_e, code) => {
 
   let res;
   try {
-    res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/get_team_key`, {
+    res = await fetch(`${API_URL}/v1/rpc/get_team_key`, {
       method: "POST",
       headers: {
-        apikey: ANON,
-        Authorization: `Bearer ${ANON}`,
+        Authorization: `Bearer ${API_KEY}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({ p_code: code }),
@@ -66,7 +65,7 @@ ipcMain.handle("connect", async (_e, code) => {
     return { ok: false, error: msg };
   }
 
-  // La fonction RPC renvoie le blob sous forme de chaîne JSON (avec guillemets).
+  // Le service renvoie le blob sous forme de chaîne JSON (avec guillemets).
   let teamKey = text.trim();
   try {
     const parsed = JSON.parse(teamKey);
@@ -81,7 +80,7 @@ ipcMain.handle("connect", async (_e, code) => {
   // Vérifie que le blob est décodable (base64 → JSON attendu)
   try {
     const decoded = JSON.parse(Buffer.from(teamKey, "base64").toString("utf8"));
-    if (!decoded.supabase_url || !decoded.private_key) throw new Error("incomplet");
+    if (!decoded.api_url || !decoded.api_token || !decoded.private_key) throw new Error("incomplet");
   } catch {
     return { ok: false, error: "La clé reçue est invalide. Préviens Sacha." };
   }

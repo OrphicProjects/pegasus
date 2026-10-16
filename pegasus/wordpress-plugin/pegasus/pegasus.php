@@ -2,7 +2,7 @@
 /*
 Plugin Name: Pegasus
 Description: Pont d'administration à distance pour Orphic Agency — inspection, contenus (dont Elementor JSON), médias et extensions, via l'API REST authentifiée par Application Password.
-Version: 0.10.0
+Version: 0.11.0
 Author: Orphic Agency
 Requires at least: 6.0
 Requires PHP: 7.4
@@ -34,7 +34,7 @@ if (empty($_SERVER['PHP_AUTH_USER'])) {
     }
 }
 
-/* Config Supabase + clé de chiffrement (générée à la construction du plugin) */
+/* Config du service Pegasus (adresse + jeton public) + clé de chiffrement (générée à la construction du plugin) */
 if (file_exists(__DIR__ . '/config.php')) require_once __DIR__ . '/config.php';
 
 /**
@@ -52,7 +52,7 @@ if (file_exists(__DIR__ . '/config.php')) require_once __DIR__ . '/config.php';
 class Pegasus {
 
     const NS  = 'pegasus/v1';
-    const VER = '0.10.0';
+    const VER = '0.11.0';
     const MAX_ZIP = 52428800;  // 50 Mo
     const MAX_MEDIA = 67108864; // 64 Mo (base64 ; au-delà : upload par URL)
 
@@ -72,7 +72,7 @@ class Pegasus {
         /* Mesure d'audience « first-party » (sans cookie, RGPD) : une visite front = une ligne */
         add_action('template_redirect', [__CLASS__, 'track']);
         /* Rapport quotidien : tic horaire, déclenche à 18 h (Paris). Tourne côté serveur
-           client, donc même app Olympus fermée. Le résultat est poussé dans Supabase. */
+           client, donc même app Olympus fermée. Le résultat est poussé au service Pegasus (Cloudflare). */
         add_action('pegasus_report_tick', [__CLASS__, 'report_tick']);
         if (!wp_next_scheduled('pegasus_report_tick')) wp_schedule_event(time() + 300, 'hourly', 'pegasus_report_tick');
     }
@@ -170,7 +170,7 @@ class Pegasus {
         ];
     }
 
-    /* ═══════════════════ RAPPORT QUOTIDIEN (18 h Paris → Supabase) ═══════════════════
+    /* ═══════════════════ RAPPORT QUOTIDIEN (18 h Paris → service Pegasus) ═══════════════════
        Le serveur du client calcule et pousse son propre rapport chaque jour — aucune
        dépendance à l'app Olympus. Un rapport = SEO + Performance + Sécurité + Audience. */
     public static function seo_report() {
@@ -262,16 +262,15 @@ class Pegasus {
         ];
     }
 
-    /* Pousse le rapport du jour dans Supabase (clé publishable, table append-only). */
+    /* Pousse le rapport du jour au service Pegasus (jeton public : ajout seul, aucune lecture). */
     public static function push_report($day, $force = false) {
-        if (!defined('PEGASUS_SUPABASE_URL') || !defined('PEGASUS_SUPABASE_KEY')) return ['ok' => false, 'error' => 'Supabase non configuré dans ce plugin.'];
+        if (!defined('PEGASUS_API_URL') || !defined('PEGASUS_API_KEY')) return ['ok' => false, 'error' => 'Service Pegasus non configuré dans ce plugin.'];
         if (!$force && get_option('pegasus_report_day') === $day) return ['ok' => true, 'skipped' => true, 'day' => $day];
         $report = self::build_report($day);
-        $res = wp_remote_post(PEGASUS_SUPABASE_URL . '/rest/v1/reports', [
+        $res = wp_remote_post(PEGASUS_API_URL . '/v1/reports', [
             'timeout' => 25,
             'headers' => [
-                'apikey'        => PEGASUS_SUPABASE_KEY,
-                'Authorization' => 'Bearer ' . PEGASUS_SUPABASE_KEY,
+                'Authorization' => 'Bearer ' . PEGASUS_API_KEY,
                 'Content-Type'  => 'application/json',
                 'Prefer'        => 'return=minimal',
             ],
@@ -284,7 +283,7 @@ class Pegasus {
             self::log('daily_report', ['day' => $day, 'seo' => $report['seo']['score'] ?? null, 'secu' => $report['secu']['score'] ?? null]);
             return ['ok' => true, 'pushed' => true, 'day' => $day, 'report' => $report];
         }
-        return ['ok' => false, 'error' => 'Supabase ' . $code . ' : ' . substr(wp_remote_retrieve_body($res), 0, 200), 'report' => $report];
+        return ['ok' => false, 'error' => 'Service Pegasus ' . $code . ' : ' . substr(wp_remote_retrieve_body($res), 0, 200), 'report' => $report];
     }
 
     /* Tic horaire : à partir de 18 h (Europe/Paris), génère le rapport du jour une seule fois. */
@@ -620,18 +619,17 @@ class Pegasus {
                 $password = $created[0];
 
                 /* Chiffrement RSA du mot de passe avec la clé publique de l'agence */
-                if (!defined('PEGASUS_PUBKEY') || !defined('PEGASUS_SUPABASE_URL')) {
-                    return new WP_Error('pegasus_noconf', 'Configuration Supabase absente de ce build du plugin.', ['status' => 500]);
+                if (!defined('PEGASUS_PUBKEY') || !defined('PEGASUS_API_URL') || !defined('PEGASUS_API_KEY')) {
+                    return new WP_Error('pegasus_noconf', 'Configuration du service Pegasus absente de ce build du plugin.', ['status' => 500]);
                 }
                 $ok = openssl_public_encrypt($password, $enc, PEGASUS_PUBKEY, OPENSSL_PKCS1_OAEP_PADDING);
                 if (!$ok) return new WP_Error('pegasus_enc', 'Échec du chiffrement.', ['status' => 500]);
 
-                /* Inscription (append) dans Supabase via la clé publique */
-                $res = wp_remote_post(PEGASUS_SUPABASE_URL . '/rest/v1/sites', [
+                /* Inscription (ajout seul) au registre du service Pegasus, avec le jeton public */
+                $res = wp_remote_post(PEGASUS_API_URL . '/v1/sites', [
                     'timeout' => 20,
                     'headers' => [
-                        'apikey'        => PEGASUS_SUPABASE_KEY,
-                        'Authorization' => 'Bearer ' . PEGASUS_SUPABASE_KEY,
+                        'Authorization' => 'Bearer ' . PEGASUS_API_KEY,
                         'Content-Type'  => 'application/json',
                     ],
                     'body' => wp_json_encode([
@@ -644,9 +642,9 @@ class Pegasus {
                 if (is_wp_error($res)) return $res;
                 $status = wp_remote_retrieve_response_code($res);
                 if ($status < 200 || $status >= 300) {
-                    return new WP_Error('pegasus_supa', 'Supabase a refusé l\'inscription (HTTP ' . $status . ').', ['status' => 502]);
+                    return new WP_Error('pegasus_registre', 'Le service Pegasus a refusé l\'inscription (HTTP ' . $status . ').', ['status' => 502]);
                 }
-                self::log('connect_supabase', ['site' => home_url('/')]);
+                self::log('connect_registre', ['site' => home_url('/')]);
                 return ['ok' => true, 'site' => get_bloginfo('name')];
             },
         ]);

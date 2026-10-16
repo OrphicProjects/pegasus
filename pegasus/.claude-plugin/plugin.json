@@ -1,7 +1,7 @@
 {
   "name": "pegasus",
   "description": "Gérer les sites WordPress des clients Orphic depuis Claude — contenus, thèmes, plugins, SEO, médias, multilingue. Sans FTP. Inclut les skills orphic-web-design (constitution design) et orphic-build (du wireframe Olympus au site local), et les agents orphic-critique / orphic-optimizer / orphic-monitoring / orphic-reporting.",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "author": {
     "name": "Orphic Agency",
     "url": "https://orphic-agency.com"
@@ -11,7 +11,7 @@
     "team_key": {
       "type": "string",
       "title": "Clé d'équipe Pegasus",
-      "description": "Facultatif ici : sur l'app desktop, configurez plutôt la clé avec la commande /pegasus:installer après l'installation. Elle donne accès au registre des sites (Supabase) et à la clé de déchiffrement. Ne la partagez pas.",
+      "description": "Facultatif ici : sur l'app desktop, configurez plutôt la clé avec la commande /pegasus:installer après l'installation. Elle donne accès au registre des sites (service Pegasus) et à la clé de déchiffrement. Ne la partagez pas.",
       "required": false
     }
   }

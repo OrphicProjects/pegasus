@@ -199,7 +199,7 @@ lui seul sait évaluer : singularité, intention, matière, goût.
 
 Ce skill porte la **méthode** (stable). Les **données vivantes** — références,
 animations validées, fiches secteurs — vivent dans la bibliothèque Orphic
-(Supabase, via les outils MCP Pegasus), enrichie au quotidien par la veille
+(service Pegasus sur Cloudflare, via les outils MCP Pegasus), enrichie au quotidien par la veille
 de l'équipe :
 
 - `pegasus_get_references` — chercher (filtres : kind, niveau, registre,

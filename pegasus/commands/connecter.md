@@ -9,7 +9,7 @@ Guide l'utilisateur, étape par étape, pour connecter un nouveau site WordPress
    Dans le wp-admin du client : *Extensions → Ajouter → Téléverser une extension → choisir ce zip → Installer → Activer*.
    (Rappelle à l'utilisateur qu'il faut un compte administrateur sur le WordPress du client.)
 
-2. **Connecter le site.** Dans le wp-admin du client, ouvrir le menu **Pegasus** (barre latérale) et cliquer sur **« Connecter ce site à Claude »**. Le plugin crée automatiquement un mot de passe d'application, le chiffre, et l'enregistre dans le registre Supabase d'Orphic. Aucun copier-coller de mot de passe.
+2. **Connecter le site.** Dans le wp-admin du client, ouvrir le menu **Pegasus** (barre latérale) et cliquer sur **« Connecter ce site à Claude »**. Le plugin crée automatiquement un mot de passe d'application, le chiffre, et l'enregistre dans le registre Pegasus d'Orphic (Cloudflare). Aucun copier-coller de mot de passe.
 
 3. **Vérifier.** Une fois le bouton cliqué, appelle `pegasus_list_clients` : le nouveau site doit apparaître. Confirme à l'utilisateur que le site est connecté et propose un premier diagnostic avec `pegasus_diagnostic <clé>`.
 

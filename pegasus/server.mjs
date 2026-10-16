@@ -16,7 +16,8 @@ import { homedir } from "node:os";
 
 const __dir = dirname(fileURLToPath(import.meta.url));
 
-/* Clé d'équipe : base64 d'un JSON {supabase_url, supabase_service_key, private_key}.
+/* Clé d'équipe : base64 d'un JSON {api_url, api_token, private_key} —
+   api_url : le service Pegasus (Worker Cloudflare) ; api_token : son jeton de service.
    Sources, dans l'ordre :
      1. variable d'env PEGASUS_TEAM_KEY (userConfig du plugin, si l'app la supporte)
      2. fichier ~/.pegasus/team-key (déposé par la commande /pegasus:installer) ← cas app desktop
@@ -37,9 +38,7 @@ function loadTeamKey() {
 }
 function loadConfig() {
   const t = loadTeamKey();
-  if (t && t.supabase_url && t.supabase_service_key) {
-    return { supabase_url: t.supabase_url, supabase_service_key: t.supabase_service_key, supabase_anon_key: t.supabase_anon_key };
-  }
+  if (t && t.api_url && t.api_token) return { api_url: t.api_url, api_token: t.api_token };
   try { return JSON.parse(readFileSync(join(__dir, "pegasus.config.json"), "utf8")); }
   catch { return {}; }
 }
@@ -50,17 +49,17 @@ function loadPrivateKey() {
   catch { return null; }
 }
 
-/* ————— Sites depuis Supabase (déchiffrés) + clients.json local en secours ————— */
+/* ————— Sites depuis le registre Pegasus (déchiffrés) + clients.json local en secours ————— */
 let _cache = { at: 0, clients: {} };
-async function loadClientsFromSupabase() {
+async function loadClientsFromRegistry() {
   const cfg = loadConfig();
   const priv = loadPrivateKey();
-  if (!cfg.supabase_url || !cfg.supabase_service_key || !priv) return {};
-  const url = cfg.supabase_url.replace(/\/$/, "");
-  const res = await fetch(`${url}/rest/v1/sites?select=*&order=id.desc`, {
-    headers: { apikey: cfg.supabase_service_key, Authorization: `Bearer ${cfg.supabase_service_key}` },
+  if (!cfg.api_url || !cfg.api_token || !priv) return {};
+  const url = cfg.api_url.replace(/\/$/, "");
+  const res = await fetch(`${url}/v1/sites?select=*&order=id.desc`, {
+    headers: { Authorization: `Bearer ${cfg.api_token}` },
   });
-  if (!res.ok) throw new Error(`Supabase ${res.status}`);
+  if (!res.ok) throw new Error(`Registre Pegasus ${res.status}`);
   const rows = await res.json();
   const clients = {};
   for (const row of rows) {
@@ -84,7 +83,7 @@ async function loadClients() {
   try { local = JSON.parse(readFileSync(join(__dir, "clients.json"), "utf8")).clients || {}; } catch {}
   if (Date.now() - _cache.at < 30000) return { ...local, ..._cache.clients };
   try {
-    const remote = await loadClientsFromSupabase();
+    const remote = await loadClientsFromRegistry();
     _cache = { at: Date.now(), clients: remote };
     return { ...local, ...remote };
   } catch {
@@ -134,23 +133,22 @@ async function pegasus(key, method, path, body) {
    Architecture « méthode stable / données vivantes » : le skill orphic-web-design
    porte la méthode, cette table porte les données (refs, animations, secteurs).
    Flux : proposer (candidat) → valider (humain) → vivant pour toute l'agence. */
-async function supa(path, opts = {}) {
+async function registry(path, opts = {}) {
   const cfg = loadConfig();
-  if (!cfg.supabase_url || !cfg.supabase_service_key) {
-    throw new Error("Supabase non configuré (clé d'équipe manquante — /pegasus:installer).");
+  if (!cfg.api_url || !cfg.api_token) {
+    throw new Error("Service Pegasus non configuré (clé d'équipe manquante — /pegasus:installer).");
   }
-  const url = cfg.supabase_url.replace(/\/$/, "");
-  const res = await fetch(`${url}/rest/v1${path}`, {
+  const url = cfg.api_url.replace(/\/$/, "");
+  const res = await fetch(`${url}/v1${path}`, {
     ...opts,
     headers: {
-      apikey: cfg.supabase_service_key,
-      Authorization: `Bearer ${cfg.supabase_service_key}`,
+      Authorization: `Bearer ${cfg.api_token}`,
       "Content-Type": "application/json",
       ...(opts.headers || {}),
     },
   });
   const text = await res.text();
-  if (!res.ok) throw new Error(`Supabase ${res.status} : ${text.slice(0, 200)}`);
+  if (!res.ok) throw new Error(`Service Pegasus ${res.status} : ${text.slice(0, 200)}`);
   try { return text ? JSON.parse(text) : null; } catch { return { raw: text.slice(0, 300) }; }
 }
 
@@ -304,7 +302,7 @@ const TOOLS = [
   },
   {
     name: "pegasus_get_references",
-    description: "Bibliothèque Orphic (Supabase) : cherche des références de design vivantes — sites, animations, matières, fiches secteur — enrichies par la veille de l'équipe. Utilisée par le skill orphic-web-design au cadrage et en recherche de DA. Par défaut, ne renvoie que les références validées.",
+    description: "Bibliothèque Orphic (service Pegasus) : cherche des références de design vivantes — sites, animations, matières, fiches secteur — enrichies par la veille de l'équipe. Utilisée par le skill orphic-web-design au cadrage et en recherche de DA. Par défaut, ne renvoie que les références validées.",
     inputSchema: {
       type: "object",
       properties: {
@@ -423,14 +421,14 @@ async function callTool(name, a = {}) {
         if (statut !== "tous") p.set("statut", `eq.${statut}`);
         if (a.q) p.set("or", `(titre.ilike.*${a.q}*,ingredients.ilike.*${a.q}*,technique.ilike.*${a.q}*,notes.ilike.*${a.q}*)`);
         p.set("limit", String(a.limit || 30));
-        return ok(await supa(`/references_library?${p.toString()}`));
+        return ok(await registry(`/references_library?${p.toString()}`));
       }
       case "pegasus_add_reference": {
         if (!a.titre) throw new Error("titre obligatoire.");
         const row = { statut: a.statut === "valide" ? "valide" : "candidat" };
         if (a.auteur) row.auteur = a.auteur;
         for (const k of REF_FIELDS) if (a[k] !== undefined) row[k] = a[k];
-        const r = await supa("/references_library", {
+        const r = await registry("/references_library", {
           method: "POST",
           body: JSON.stringify(row),
           headers: { Prefer: "return=representation" },
@@ -440,7 +438,7 @@ async function callTool(name, a = {}) {
       case "pegasus_validate_reference": {
         if (!a.id) throw new Error("id obligatoire.");
         const statut = a.statut === "rejete" ? "rejete" : "valide";
-        const r = await supa(`/references_library?id=eq.${a.id}`, {
+        const r = await registry(`/references_library?id=eq.${a.id}`, {
           method: "PATCH",
           body: JSON.stringify({ statut }),
           headers: { Prefer: "return=representation" },
@@ -470,7 +468,7 @@ async function handle(msg) {
       return reply(id, {
         protocolVersion: (params && params.protocolVersion) || PROTO,
         capabilities: { tools: {} },
-        serverInfo: { name: "pegasus", version: "0.4.0" },
+        serverInfo: { name: "pegasus", version: "0.6.0" },
       });
     case "notifications/initialized":
     case "notifications/cancelled":

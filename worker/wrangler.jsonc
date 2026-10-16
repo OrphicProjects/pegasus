@@ -1,0 +1,15 @@
+// Pegasus — le Worker et sa base D1. Déployé depuis le Mac :
+//   CLOUDFLARE_API_TOKEN=… CLOUDFLARE_ACCOUNT_ID=… npx wrangler deploy
+// (le jeton vient de ~/.config/orphic/cloudflare-lab.local.json, jamais écrit ici).
+// Secrets du Worker (posés chez Cloudflare) : PEGASUS_PUBLIC_TOKEN, PEGASUS_SERVICE_TOKEN.
+{
+  "name": "pegasus",
+  "main": "src/index.js",
+  "compatibility_date": "2026-09-01",
+  "account_id": "fea525eafa3e45202b795add132cd78d",
+  "workers_dev": true,
+  "observability": { "enabled": true },
+  "d1_databases": [
+    { "binding": "DB", "database_name": "pegasus", "database_id": "c32ce489-8041-4d5d-88f6-124c0e20aff6" }
+  ]
+}
